@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.text.*?>
+<?import java.lang.*?>
+<?import java.util.*?>
+<?import javafx.scene.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<Pane fx:id="pane" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="238.0" prefWidth="828.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="Controller.MainWindowController">
+   <children>
+      <Label layoutX="31.0" layoutY="53.0" text="Team 1" />
+      <Label layoutX="31.0" layoutY="100.0" text="Team 2" />
+      <TextField fx:id="heroeTf1" layoutX="92.0" layoutY="49.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf2" layoutX="227.0" layoutY="49.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf3" layoutX="363.0" layoutY="49.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf4" layoutX="499.0" layoutY="49.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf5" layoutX="636.0" layoutY="49.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf6" layoutX="91.0" layoutY="96.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf7" layoutX="226.0" layoutY="96.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf8" layoutX="362.0" layoutY="96.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf9" layoutX="498.0" layoutY="96.0" prefHeight="25.0" prefWidth="130.0" />
+      <TextField fx:id="heroeTf10" layoutX="635.0" layoutY="96.0" prefHeight="25.0" prefWidth="130.0" />
+      <Button fx:id="okBt" layoutX="370.0" layoutY="150.0" mnemonicParsing="false" onAction="#handleOkButtonAction" text="OK" />
+      <Button fx:id="clearBt" layoutX="440.0" layoutY="150.0" mnemonicParsing="false" onAction="#handleClearButtonAction" text="Clear" />
+      <Label fx:id="finishLabel" layoutX="384.0" layoutY="190.0" prefHeight="20.0" prefWidth="89.0">
+         <font>
+            <Font size="14.0" />
+         </font>
+      </Label>
+      <MenuBar fx:id="menuBar" layoutX="6.0" layoutY="8.0">
+        <menus>
+          <Menu mnemonicParsing="false" text="File">
+            <items>
+              <MenuItem fx:id="switchToAddMatchesMenu" mnemonicParsing="false" onAction="#handleSwitchToAddMatchesMenuAction" text="Добавить в БД" />
+                <MenuItem fx:id="switchToAddSubscriptionMenu" mnemonicParsing="false" onAction="#handleSwitchToAddSubscriptionMenuAction" text="Добавление подписок" />
+            </items>
+          </Menu>
+        </menus>
+      </MenuBar>
+   </children>
+</Pane>

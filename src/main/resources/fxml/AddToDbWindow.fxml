@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import java.lang.*?>
+<?import java.util.*?>
+<?import javafx.scene.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<Pane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="Controller.AddToDbWindowController">
+   <children>
+      <MenuBar layoutX="7.0" layoutY="2.0">
+        <menus>
+          <Menu mnemonicParsing="false" text="File">
+            <items>
+              <MenuItem fx:id="switchToMainMenu" mnemonicParsing="false" onAction="#handleSwitchToMainMenuAction" text="Поиск по пикам" />
+                  <MenuItem fx:id="switchToAddSubscriptionMenu" mnemonicParsing="false" onAction="#handleSwitchToAddSubscriptionMenuAction" text="Добавление подписок" />
+            </items>
+          </Menu>
+        </menus>
+      </MenuBar>
+      <TextArea fx:id="ta" layoutX="14.0" layoutY="141.0" prefHeight="245.0" prefWidth="574.0" />
+      <TextField fx:id="linkTf" layoutX="176.0" layoutY="44.0" prefHeight="25.0" prefWidth="296.0" />
+      <TextField fx:id="numberTf1" layoutX="176.0" layoutY="84.0" prefHeight="25.0" prefWidth="50.0" />
+      <Button fx:id="okBt" layoutX="439.0" layoutY="84.0" mnemonicParsing="false" onAction="#handleOkButtonAction" text="ОК" />
+      <Label layoutX="21.0" layoutY="48.0" text="Cсылка на турнир" />
+      <Label layoutX="23.0" layoutY="88.0" text="Номер игры" />
+      <TextField fx:id="numberTf2" layoutX="251.0" layoutY="84.0" prefHeight="25.0" prefWidth="50.0" />
+   </children>
+</Pane>
