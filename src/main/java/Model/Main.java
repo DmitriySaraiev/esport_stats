@@ -32,9 +32,9 @@ public class Main extends Application {
         primaryStage.setOnHidden(e -> AddToDbWindowController.stop());
         primaryStage.show();
     }
-
-    public static void main(String[] args) {
-        ddb = new DotaDatabase();
+    
+    private static void initialize(){
+        ddb = new DotaDatabase(new PasswordManager());
         if(isServer) {
             ApiContextInitializer.init();
             TelegramBotsApi telegram = new TelegramBotsApi();
@@ -45,8 +45,11 @@ public class Main extends Application {
                 e.printStackTrace();
             }
         }
-        launch(args);
+    }
 
+    public static void main(String[] args) {
+        initialize();
+        launch(args);
     }
 
 }

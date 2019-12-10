@@ -1,6 +1,7 @@
 package Model.Dota;
 
 import Model.Main;
+import Model.PasswordManager;
 import Model.TelegramBot.Subscription;
 
 import java.sql.*;
@@ -9,50 +10,71 @@ import java.util.Calendar;
 
 public class DotaDatabase {
 
-    private static final String remoteServerUrl = ""; //insert your remote or localhost server adress
-    private static final String connectionURLRemote = "jdbc:mysql://" + remoteServerUrl +"/esport_db_dota?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC&autoReconnect=true";
-    private static final String connectionURLLocal = "jdbc:mysql://localhost/esport_db_dota?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC&autoReconnect=true";
-    private static final String user = "";  //userName for database
-    private static final String password = ""; //password for database
+    private PasswordManager passwordManager;
+    private String remoteServerUrl;
+    private String connectionURLRemote;
+    private String connectionURLLocal = "jdbc:mysql://localhost/esport_db_dota?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC&autoReconnect=true";
+    private String user; 
+    private String password; 
+    
+    private Connection connection;
+    private Statement statement;
+    private ResultSet resultSet;
 
-
-    private static Connection connection;
-    private static Statement statement;
-    private static ResultSet resultSet;
-
-    public DotaDatabase() {
+    public DotaDatabase(PasswordManager passwordManager) {
+        this.passwordManager = passwordManager;
         try {
-            if(Main.isServer)
-                connection = DriverManager.getConnection(connectionURLLocal, user, password);
-            else
-                connection = DriverManager.getConnection(connectionURLRemote, user, password);
-            statement = connection.createStatement();
-            Runnable keepConnectionLiveTask = () -> {
-                try {
-                    while(true){
-                    System.out.println("checking connection");
-                    if (connection.isClosed()) {
-                        System.out.println("connection closed");
-                        connection = DriverManager.getConnection(connectionURLLocal, user, password);
-                    }
-                    if(statement == null || statement.isClosed()){
-                        System.out.println("statement closed");
-                        statement = connection.createStatement();
-                    }
-                    System.out.println(statement.execute("SELECT * FROM info"));  //execute simple querry every 5 hours to keep connection alive
-                    Thread.sleep(1000 * 60 * 60 * 5);
-                    }
-                }
-                catch (SQLException e){e.printStackTrace();}
-                catch (InterruptedException e){e.printStackTrace();}
-            };
-            Thread connectionCheckThread = new Thread(keepConnectionLiveTask);
-            connectionCheckThread.start();
+            initializeConfidentialInfo();
+            initializeConnection();
+            keepConnectionAlive();
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
+    private void initializeConfidentialInfo(){
+        remoteServerUrl = passwordManager.getServerIP();
+        user = passwordManager.getDbLogin();
+        password = passwordManager.getDbPassword();
+        connectionURLRemote = "jdbc:mysql://" + remoteServerUrl +"/esport_db_dota?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC&autoReconnect=true";
+    }
+    
+    private void initializeConnection() throws SQLException{
+            if (Main.isServer)
+                connection = DriverManager.getConnection(connectionURLLocal, user, password);
+            else
+                connection = DriverManager.getConnection(connectionURLRemote, user, password);
+            statement = connection.createStatement();
+    }
+
+    private void keepConnectionAlive() {
+        Runnable keepConnectionLiveTask = () -> {
+            try {
+                checkConnection();
+            }
+            catch (SQLException e){e.printStackTrace();}
+            catch (InterruptedException e){e.printStackTrace();}
+        };
+        Thread connectionCheckThread = new Thread(keepConnectionLiveTask);
+        connectionCheckThread.start();
+    }
+
+    private void checkConnection() throws SQLException, InterruptedException{
+        while(true){
+            System.out.println("checking connection");
+            if (connection.isClosed()) {
+                System.out.println("connection closed");
+                connection = DriverManager.getConnection(connectionURLLocal, user, password);
+            }
+            if(statement == null || statement.isClosed()){
+                System.out.println("statement closed");
+                statement = connection.createStatement();
+            }
+            System.out.println(statement.execute("SELECT * FROM info"));  //execute simple querry every 5 hours to keep connection alive
+            Thread.sleep(1000 * 60 * 60 * 5);
+        }
+    }
+    
     public void createStatement() {
         try {
             statement = connection.createStatement();
@@ -128,35 +150,7 @@ public class DotaDatabase {
         }
     }
 
-    /*private void createTournament(DotaTournament tournament) {
-        try {
-            resultSet = statement.executeQuery("SELECT COUNT(*) FROM(" +
-                    "SELECT * FROM esport_db_dota.tournament WHERE tournament.name LIKE '" + tournament.getName() + "') as subquerry");
-            resultSet.last();
-            if (resultSet.getInt(1) == 0) {
-                statement.executeUpdate("INSERT INTO esport_db_dota.tournament (name) VALUES " +
-                        "('" + tournament.getName().replaceAll("'","''") + "')");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }*/
-
-    /*private void createTeam(DotaTeam team) {
-        try {
-            resultSet = statement.executeQuery("SELECT COUNT(*) FROM(" +
-                    "SELECT * FROM esport_db_dota.team WHERE team.name LIKE '" + team.getName().replaceAll("'","''") + "') as subquerry");
-            resultSet.last();
-            if (resultSet.getInt(1) == 0) {
-                statement.executeUpdate("INSERT INTO esport_db_dota.team (name) VALUES " +
-                        "('" + team.getName().replaceAll("'","''") + "')");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }*/
-
-
+    
     public ResultSet findMatchesByPick(String sqlQuerry) {
         try {
             return statement.executeQuery(sqlQuerry);

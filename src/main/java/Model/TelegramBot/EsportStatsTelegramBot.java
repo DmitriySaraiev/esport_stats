@@ -396,14 +396,17 @@ public class EsportStatsTelegramBot extends TelegramLongPollingBot {
 
     private BotController getBotController(long chatId) {
         BotController botController;
-        if (!botControllerMap.containsKey(chatId)) {
-            botController = new BotController(chatId, ddb);
-            botControllerMap.put(chatId, botController);
-            System.out.println("botController created " + chatId);
-            System.out.println("size = " + botControllerMap.size());
-        } else
-            botController = botControllerMap.get(chatId);
+        if (!botControllerMap.containsKey(chatId))
+            createBotController(chatId);
+        botController = botControllerMap.get(chatId);
         return botController;
+    }
+
+    private void createBotController(long chatId){
+        BotController botController = new BotController(chatId, ddb);
+        botControllerMap.put(chatId, botController);
+        System.out.println("botController created " + chatId);
+        System.out.println("size = " + botControllerMap.size());
     }
 
     private synchronized void sendExcel(Long chatId) {
