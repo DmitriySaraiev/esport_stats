@@ -2,7 +2,6 @@ package Model.TelegramBot;
 
 import Model.Dota.DotaDatabase;
 import Model.Dota.Heroes;
-import Model.Dota.PickSearcher;
 import Model.LiveGames.LiveGame;
 import Model.LiveGames.LiveGamePool;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -52,320 +51,11 @@ public class EsportStatsTelegramBot extends TelegramLongPollingBot {
             chatId = update.getCallbackQuery().getMessage().getChatId();
         botController = getBotController(chatId);
         if (update.hasMessage() && update.getMessage().getText().equals("/start")){
-            text = "Выберите одну из опций:";
-            botControllerMap.remove(chatId);
-            botControllerMap.put(chatId, new BotController(chatId, ddb));
-            isChangingHero = false;
-            botController = getBotController(chatId);
+            processStartCommand(text, chatId, botController);
         }
 
-        switch (botController.getBotState()) {
-            case START:
-                botController.reset();
-                setOptionsReplyKeyboard(message);
-                text = "Выберите одну из опций:";
-                if (update.getMessage().getText().equals("Начать работу анализатора пиков")) {
-                    StringBuilder responceSb = new StringBuilder();
-                    int freeUsesLeft = ddb.getFreeUsesLeft(chatId);
-                    if (!botController.isSubscriptionActive() && freeUsesLeft != 0) {
-                        responceSb.append("У вас осталось " + freeUsesLeft + " бесплатных запросов\n\n");
-                    }
-                    else if(!botController.isSubscriptionActive() && freeUsesLeft == 0){
-                        text = "Ваша подписка истекла/не ативирована. У вас не осталось бесплатных запросов.";
-                        setOptionsReplyKeyboard(message);
-                        break;
-                    }
-                    ConcurrentHashMap<String, LiveGame> liveGameMap = liveGamePool.getLiveGames();
-                    responceSb.append("Список текущих игр:\n");
-                    for(Map.Entry entry : liveGameMap.entrySet()){
-                        LiveGame liveGame = (LiveGame)entry.getValue();
-                        responceSb.append(liveGame.getTeams()+"\n");
-                    }
-                    if(liveGameMap.size() > 0)
-                        text = responceSb.toString();
-                    else
-                        text = "Игр в лайве не было обнаружено, пожалуйста, введите пик вручную";
-                    setChooseAnalyserModeKeyboard(message, liveGameMap.size() > 0);
-                    botController.setBotState(BotState.CHOOSING_ANALYSER_MODE);
-                } else if (update.getMessage().getText().equals("Моя подписка")) {
-                    removeReplyKeyboard(message);
-                    Timestamp subsr = botController.getSubscriptionUntill();
-                    if (subsr == null || subsr.before(new Timestamp(System.currentTimeMillis()))) {
-                        int freeUsesLeft = ddb.getFreeUsesLeft(chatId);
-                        if (freeUsesLeft != 0)
-                            text = "Ваша подписка истекла/не ативирована.\nУ вас осталось " + freeUsesLeft + " бесплатных запросов";
-                        else
-                            text = "Ваша подписка истекла/не ативирована";
-                        setSubscriptionModeKeyboard(message);
-                        botController.setBotState(BotState.SUBSCRIPTION_MODE);
-                    } else {
-                        text = "Ваша подписка активна до " + new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Timestamp(subsr.getTime() + servetTimeShift));
-                        setOptionsReplyKeyboard(message);
-                        botControllerMap.remove(chatId);
-                        botController.setBotState(BotState.START);
-                    }
-                } else if (update.getMessage().getText().equals("Информация")) {
-                    text = "Всю необходимую информация вы найдете на канале @esportStatsDota2Channel";
-                }
-                break;
-            case SUBSCRIPTION_MODE:
-                if (update.getMessage().getText().equals("Ввести код для активации подписки")) {
-                    text = "Пожалуйста, введите активационный код:";
-                    botController.setBotState(BotState.ENTERING_SUBSCRIPTION_CODE);
-                    removeReplyKeyboard(message);
-                } else if (update.getMessage().getText().equals("К списку комманд")) {
-                    setOptionsReplyKeyboard(message);
-                    text = "Выберите одну из опций:";
-                    botControllerMap.remove(chatId);
-                    botController.setBotState(BotState.START);
-                }
-                break;
-            case ENTERING_SUBSCRIPTION_CODE:
-                Subscription subscription;
-                subscription = ddb.getSubscriptionByCode(update.getMessage().getText());
-                if (subscription.getCode() == null) {
-                    text = "Неправильный код!";
-                    botController.setBotState(BotState.SUBSCRIPTION_MODE);
-                    setSubscriptionModeKeyboard(message);
-                } else {
-                    if (subscription.isReusable()) {
-                        if (subscription.getTillDate().before(new Timestamp(System.currentTimeMillis()))) {
-                            text = "К сожалению, срок действия этого кода уже истек";
-                            botControllerMap.remove(chatId);
-                            botController.setBotState(BotState.START);
-                            setOptionsReplyKeyboard(message);
-                        } else {
-                            botController.setSubscriptionUntill(subscription.getTillDate());
-                            ddb.createUserSubscription(chatId, subscription);
-                        }
-                    } else
-                        botController.setSubscriptionUntill(subscription.getHours());
-                    if (subscription.getTillDate().after(new Timestamp(System.currentTimeMillis()))) {
-                        text = "Ваш активационный код был успешно подтвержден. Ваша подписка активна до " + new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Timestamp(botController.getSubscriptionUntill().getTime() + servetTimeShift));
-                        ddb.createUserSubscription(chatId, subscription);
-                        botControllerMap.remove(chatId);
-                        botController.setBotState(BotState.START);
-                        setOptionsReplyKeyboard(message);
-                    }
-                }
-                break;
-            case CHOOSING_ANALYSER_MODE:
-                if (update.getMessage().getText().equals("Выбрать из списка текущих игр")){
-                    text = "Пожалуйста, выберите одну из предложеных игр:";
-                    setChooseLiveGameKeyboard(message);
-                    botController.setBotState(BotState.PICKING_LIVE_GAME);
-                }
-                else if(update.getMessage().getText().equals("Ввести пики вручную")){
-                    int freeUsesLeft = ddb.getFreeUsesLeft(chatId);
-                    if (botController.isSubscriptionActive()) {
-                        text = "Выберите первую букву имени героя сил света №1";
-                        setAlphabetReplyKeyboard(message, true);
-                        botController.setBotState(BotState.PICKING_FIRST_LETTER);
-                        break;
-                    }
-                    if (freeUsesLeft != 0) {
-                        text = "Ваша подписка истекла/не ативирована.\nУ вас осталось " + freeUsesLeft + " бесплатных запросов\nВыберите первую букву имени героя сил света №1";
-                        setAlphabetReplyKeyboard(message, true);
-                        botController.setBotState(BotState.PICKING_FIRST_LETTER);
-                    } else {
-                        text = "Ваша подписка истекла/не ативирована";
-                    }
-                }
-                else if(update.getMessage().getText().equals("Назад")){
-                    botControllerMap.remove(chatId);
-                    botController.setBotState(BotState.START);
-                    text = "Выберите одну из опций:";
-                    setOptionsReplyKeyboard(message);
-                }
-                else{
-                    text = "Пожалуйста, выберите одну из опций:";
-                }
-                break;
-            case PICKING_LIVE_GAME:
-                if(update.getMessage().getText().equals("Назад")){
-                    botController.setBotState(BotState.CHOOSING_ANALYSER_MODE);
-                    setChooseAnalyserModeKeyboard(message, true);
-                    StringBuilder responceSb = new StringBuilder();
-                    ConcurrentHashMap<String, LiveGame> liveGameMap = liveGamePool.getLiveGames();
-                    responceSb.append("Список текущих игр:\n");
-                    for(Map.Entry entry : liveGameMap.entrySet()){
-                        LiveGame liveGame = (LiveGame)entry.getValue();
-                        responceSb.append(liveGame.getTeams()+"\n");
-                    }
-                    if(liveGameMap.size() > 0)
-                        text = responceSb.toString();
-                    else
-                        text = "Игр в лайве не было обнаружено, пожалуйста, введите пик вручную";
-                    setChooseAnalyserModeKeyboard(message, liveGameMap.size() > 0);
-                }
-                else if (update.getMessage().getText().contains("____")){
-                    String linkNumber = update.getMessage().getText().split("____")[1];
-                    botController.setTeams(update.getMessage().getText().split("____")[0]);
-                    ArrayList<String> pickList = liveGamePool.getLiveGames().get("https://hawkbets.com/matches/"+linkNumber).getPicks();
-                    if(pickList.size() < 10){
-                        text = "Стадия пиков еще не завершена, пожалуйста, повторите попытку позже.";
-                        break;
-                    }
-                    botController.setLeftHeroList(new ArrayList<>(pickList.subList(0,5)));
-                    botController.setRightHeroList(new ArrayList<>(pickList.subList(5,10)));
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("Вы выбрали " + botController.getTeams() + "\n");
-                    for (int i = 0; i < botController.getLeftHeroList().size(); i++) {
-                        sb.append(botController.getLeftHeroList().get(i));
-                        if (i == 4)
-                            sb.append("\n");
-                        else
-                            sb.append(", ");
-                    }
-                    for (int i = 0; i < botController.getRightHeroList().size(); i++) {
-                        sb.append(botController.getRightHeroList().get(i));
-                        if (i == 4)
-                            sb.append("\n");
-                        else
-                            sb.append(", ");
-                    }
-                    sb.append("\nВсе верно?");
-                    text = sb.toString();
-                    botController.setBotState(BotState.CONFIRMING_LIVE_GAME);
-                    setAgreeReplyKeyboard(message);
-                }
-                else{
-                    text = "Пожалуйста, выберите одну из опций:";
-                }
-                break;
-            case PICKING_FIRST_LETTER:
-                if (update.getMessage().getText().equals("Сменить сторону выбора")) {
-                    botController.setPickingRadiantHero(!botController.isPickingRadiantHero());
-                    if (botController.isPickingRadiantHero())
-                        text = "Выберите первую букву имени героя сил света №" + botController.getRadiantHeroCounter();
-                    else
-                        text = "Выберите первую букву имени героя сил тьмы №" + (botController.getDireHeroCounter());
-                } else if (update.getMessage().getText().matches("[A-Z]")) {
-                    removeReplyKeyboard(message);
-                    try {
-                        execute(message.setChatId(chatId).setText("Список героев "));
-                    } catch (TelegramApiException e) {
-                        e.printStackTrace();
-                    }
-                    text = "на выбранную букву:";
-                    botController.setBotState(BotState.PICKING_HERO);
-                    setHeroListInlineKeyboard(message, update.getMessage().getText());
-                } else {
-                    text = "Пожалуйста, выберите букву:";
-                }
-                break;
-            case PICKING_HERO:
-                if (isChangingHero) {
-                    if(heroIndex > 4){
-                        heroIndex -= 5;
-                        botController.getRightHeroList().remove(heroIndex);
-                        botController.getRightHeroList().add(heroIndex, update.getCallbackQuery().getData());
-                    }
-                    else {
-                        botController.getLeftHeroList().remove(heroIndex);
-                        botController.getLeftHeroList().add(heroIndex, update.getCallbackQuery().getData());
-                    }
-                    isChangingHero = false;
-                } else {
-                    if(botController.isPickingRadiantHero())
-                        botController.getLeftHeroList().add(update.getCallbackQuery().getData());
-                    else
-                        botController.getRightHeroList().add(update.getCallbackQuery().getData());
-                    botController.setBotState(BotState.PICKING_FIRST_LETTER);
-                    if (botController.isPickingRadiantHero())
-                        botController.setRadiantHeroCounter(botController.getRadiantHeroCounter() + 1);
-                    else
-                        botController.setDireHeroCounter(botController.getDireHeroCounter() + 1);
-                }
-                if (botController.isPickingRadiantHero() ) {
-                    if(botController.getRadiantHeroCounter() <= 5)
-                        text = "Выберите первую букву имени героя сил света №" + botController.getRadiantHeroCounter();
-                    if (botController.getRadiantHeroCounter() == 6) {
-                        text = "Выберите первую букву имени героя сил тьмы №" + botController.getDireHeroCounter();
-                        botController.setPickingRadiantHero(false);
-                    }
-                } else if (!botController.isPickingRadiantHero()) {
-                    if(botController.getDireHeroCounter() <= 5)
-                        text = "Выберите первую букву имени героя сил тьмы №" + (botController.getDireHeroCounter());
-                    if (botController.getDireHeroCounter()== 6) {
-                        text = "Выберите первую букву имени героя сил света №" + botController.getRadiantHeroCounter();
-                        botController.setPickingRadiantHero(true);
-                    }
-                }
-                boolean isChangingAllowed = false;
-                if (botController.isPickingRadiantHero()) {
-                    if (botController.getDireHeroCounter() < 6)
-                        isChangingAllowed = true;
-                } else if (!botController.isPickingRadiantHero()) {
-                    if (botController.getRadiantHeroCounter() < 6)
-                        isChangingAllowed = true;
-                }
-                setAlphabetReplyKeyboard(message, isChangingAllowed);
-                if(botController.getRadiantHeroCounter() > 5 && botController.getDireHeroCounter() > 5) {
-                    botController.setBotState(BotState.CONFIRMING);
-                    setAgreeReplyKeyboard(message);
-                    StringBuilder sb1 = new StringBuilder();
-                    for (int i = 0; i < botController.getLeftHeroList().size(); i++) {
-                        sb1.append(botController.getLeftHeroList().get(i));
-                        if (i == 4)
-                            sb1.append("\n");
-                        else
-                            sb1.append(", ");
-                    }
-                    for (int i = 0; i < botController.getRightHeroList().size(); i++) {
-                        sb1.append(botController.getRightHeroList().get(i));
-                        if (i == 4)
-                            sb1.append("\n");
-                        else
-                            sb1.append(", ");
-                    }
-                    sb1.append("\nВсе верно?");
-                    text = sb1.toString();
-                }
-                break;
-            case CONFIRMING_LIVE_GAME:
-                if (update.getMessage().getText().equals("Да")) {
-                    botController.setBotState(BotState.CREATING_EXCEL);
-                    text = "Пожалуйста, подождите...";
-                    removeReplyKeyboard(message);
-                } else if (update.getMessage().getText().equals("Нет")) {
-                    text = "Пожалуйста, выберите одну из предложеных игр:";
-                    setChooseLiveGameKeyboard(message);
-                    botController.setBotState(BotState.PICKING_LIVE_GAME);
-                }
-                else {
-                    text = "Пожалуйста, выберите ответ:";
-                }
-                break;
-            case CONFIRMING:
-                if (update.getMessage().getText().equals("Да")) {
-                    botController.setBotState(BotState.CREATING_EXCEL);
-                    text = "Пожалуйста, подождите...";
-                    removeReplyKeyboard(message);
-                } else if (update.getMessage().getText().equals("Нет")) {
-                    botController.setBotState(BotState.PICKING_HERO_TO_CHANGE);
-                    text = "Выберите героя, которого вы желаете заменить";
-                    isChangingHero = true;
-                    ArrayList<String> heroList = new ArrayList<>(botController.getLeftHeroList());
-                    heroList.addAll(botController.getRightHeroList());
-                    botController.mergeHeroLists();
-                    botController.setRadiantHeroCounter(6);
-                    botController.setDireHeroCounter(6);
-                    setChangeHeroReplyKeyboard(message, heroList);
-                }
-                else {
-                    text = "Пожалуйста, выберите ответ:";
-                }
-                break;
-            case PICKING_HERO_TO_CHANGE:
-                heroIndex = botController.getHeroList().indexOf(update.getMessage().getText());
-                botController.setBotState(BotState.PICKING_FIRST_LETTER);
-                text = "Выберите первую букву имени героя";
-                setAlphabetReplyKeyboard(message, false);
-                break;
-            case CREATING_EXCEL:
-                break;
-        }
+        processBotState(botController, text, chatId, message, update);
+
         message.setChatId(chatId).setText(text);
         try {
             if (!botController.getBotState().equals(BotState.CREATING_EXCEL)) {
@@ -409,6 +99,362 @@ public class EsportStatsTelegramBot extends TelegramLongPollingBot {
         System.out.println("size = " + botControllerMap.size());
     }
 
+    private void processBotState(BotController botController, String text, long chatId, SendMessage message, Update update){
+        switch (botController.getBotState()) {
+            case START:
+                processStartState(text, chatId, botController, message, update);
+                break;
+            case SUBSCRIPTION_MODE:
+                processSubscriptionModeState(text, chatId, botController, message, update);
+                break;
+            case ENTERING_SUBSCRIPTION_CODE:
+                processEnteringSubscriptionCodeState(text, chatId, botController, message, update);
+                break;
+            case CHOOSING_ANALYSER_MODE:
+                processChoosingAnalyzerModeState(text, chatId, botController, message, update);
+                break;
+            case PICKING_LIVE_GAME:
+                processPickingLiveGameState(text, chatId, botController, message, update);
+                break;
+            case PICKING_FIRST_LETTER:
+                processPickingFirstLetterState(text, chatId, botController, message, update);
+                break;
+            case PICKING_HERO:
+                processPickingHeroState(text, chatId, botController, message, update);
+                break;
+            case CONFIRMING_LIVE_GAME:
+                processConfirmingLiveGameState(text, chatId, botController, message, update);
+                break;
+            case CONFIRMING:
+                processConfirmingState(text, chatId, botController, message, update);
+                break;
+            case PICKING_HERO_TO_CHANGE:
+                processPickingHeroToChangeState(text, chatId, botController, message, update);
+                break;
+            case CREATING_EXCEL:
+                break;
+        }
+    }
+
+    private void processStartCommand(String text, long chatId, BotController botController){
+        text = "Выберите одну из опций:";
+        botControllerMap.remove(chatId);
+        botControllerMap.put(chatId, new BotController(chatId, ddb));
+        isChangingHero = false;
+        botController = getBotController(chatId);
+    }
+
+    private void processStartState(String text, long chatId, BotController botController, SendMessage message, Update update){
+        botController.reset();
+        setOptionsReplyKeyboard(message);
+        text = "Выберите одну из опций:";
+        if (update.getMessage().getText().equals("Начать работу анализатора пиков")) {
+            StringBuilder responceSb = new StringBuilder();
+            int freeUsesLeft = ddb.getFreeUsesLeft(chatId);
+            if (!botController.isSubscriptionActive() && freeUsesLeft != 0) {
+                responceSb.append("У вас осталось " + freeUsesLeft + " бесплатных запросов\n\n");
+            }
+            else if(!botController.isSubscriptionActive() && freeUsesLeft == 0){
+                text = "Ваша подписка истекла/не ативирована. У вас не осталось бесплатных запросов.";
+                setOptionsReplyKeyboard(message);
+                return;
+            }
+            ConcurrentHashMap<String, LiveGame> liveGameMap = liveGamePool.getLiveGames();
+            responceSb.append("Список текущих игр:\n");
+            for(Map.Entry entry : liveGameMap.entrySet()){
+                LiveGame liveGame = (LiveGame)entry.getValue();
+                responceSb.append(liveGame.getTeams()+"\n");
+            }
+            if(liveGameMap.size() > 0)
+                text = responceSb.toString();
+            else
+                text = "Игр в лайве не было обнаружено, пожалуйста, введите пик вручную";
+            setChooseAnalyserModeKeyboard(message, liveGameMap.size() > 0);
+            botController.setBotState(BotState.CHOOSING_ANALYSER_MODE);
+        } else if (update.getMessage().getText().equals("Моя подписка")) {
+            removeReplyKeyboard(message);
+            Timestamp subsr = botController.getSubscriptionUntill();
+            if (subsr == null || subsr.before(new Timestamp(System.currentTimeMillis()))) {
+                int freeUsesLeft = ddb.getFreeUsesLeft(chatId);
+                if (freeUsesLeft != 0)
+                    text = "Ваша подписка истекла/не ативирована.\nУ вас осталось " + freeUsesLeft + " бесплатных запросов";
+                else
+                    text = "Ваша подписка истекла/не ативирована";
+                setSubscriptionModeKeyboard(message);
+                botController.setBotState(BotState.SUBSCRIPTION_MODE);
+            } else {
+                text = "Ваша подписка активна до " + new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Timestamp(subsr.getTime() + servetTimeShift));
+                setOptionsReplyKeyboard(message);
+                botControllerMap.remove(chatId);
+                botController.setBotState(BotState.START);
+            }
+        } else if (update.getMessage().getText().equals("Информация")) {
+            text = "Всю необходимую информация вы найдете на канале @esportStatsDota2Channel";
+        }
+    }
+
+    private void processSubscriptionModeState(String text, long chatId, BotController botController, SendMessage message, Update update){
+        if (update.getMessage().getText().equals("Ввести код для активации подписки")) {
+            text = "Пожалуйста, введите активационный код:";
+            botController.setBotState(BotState.ENTERING_SUBSCRIPTION_CODE);
+            removeReplyKeyboard(message);
+        } else if (update.getMessage().getText().equals("К списку комманд")) {
+            setOptionsReplyKeyboard(message);
+            text = "Выберите одну из опций:";
+            botControllerMap.remove(chatId);
+            botController.setBotState(BotState.START);
+        }
+    }
+
+    private void processEnteringSubscriptionCodeState(String text, long chatId, BotController botController, SendMessage message, Update update){
+        Subscription subscription;
+        subscription = ddb.getSubscriptionByCode(update.getMessage().getText());
+        if (subscription.getCode() == null) {
+            text = "Неправильный код!";
+            botController.setBotState(BotState.SUBSCRIPTION_MODE);
+            setSubscriptionModeKeyboard(message);
+        } else {
+            if (subscription.isReusable()) {
+                if (subscription.getTillDate().before(new Timestamp(System.currentTimeMillis()))) {
+                    text = "К сожалению, срок действия этого кода уже истек";
+                    botControllerMap.remove(chatId);
+                    botController.setBotState(BotState.START);
+                    setOptionsReplyKeyboard(message);
+                } else {
+                    botController.setSubscriptionUntill(subscription.getTillDate());
+                    ddb.createUserSubscription(chatId, subscription);
+                }
+            } else
+                botController.setSubscriptionUntill(subscription.getHours());
+            if (subscription.getTillDate().after(new Timestamp(System.currentTimeMillis()))) {
+                text = "Ваш активационный код был успешно подтвержден. Ваша подписка активна до " + new SimpleDateFormat("dd/MM/yyyy HH:mm").format(new Timestamp(botController.getSubscriptionUntill().getTime() + servetTimeShift));
+                ddb.createUserSubscription(chatId, subscription);
+                botControllerMap.remove(chatId);
+                botController.setBotState(BotState.START);
+                setOptionsReplyKeyboard(message);
+            }
+        }
+    }
+
+    private void processChoosingAnalyzerModeState(String text, long chatId, BotController botController, SendMessage message, Update update){
+        if (update.getMessage().getText().equals("Выбрать из списка текущих игр")){
+            text = "Пожалуйста, выберите одну из предложеных игр:";
+            setChooseLiveGameKeyboard(message);
+            botController.setBotState(BotState.PICKING_LIVE_GAME);
+        }
+        else if(update.getMessage().getText().equals("Ввести пики вручную")){
+            int freeUsesLeft = ddb.getFreeUsesLeft(chatId);
+            if (botController.isSubscriptionActive()) {
+                text = "Выберите первую букву имени героя сил света №1";
+                setAlphabetReplyKeyboard(message, true);
+                botController.setBotState(BotState.PICKING_FIRST_LETTER);
+                return;
+            }
+            if (freeUsesLeft != 0) {
+                text = "Ваша подписка истекла/не ативирована.\nУ вас осталось " + freeUsesLeft + " бесплатных запросов\nВыберите первую букву имени героя сил света №1";
+                setAlphabetReplyKeyboard(message, true);
+                botController.setBotState(BotState.PICKING_FIRST_LETTER);
+            } else {
+                text = "Ваша подписка истекла/не ативирована";
+            }
+        }
+        else if(update.getMessage().getText().equals("Назад")){
+            botControllerMap.remove(chatId);
+            botController.setBotState(BotState.START);
+            text = "Выберите одну из опций:";
+            setOptionsReplyKeyboard(message);
+        }
+        else{
+            text = "Пожалуйста, выберите одну из опций:";
+        }
+    }
+
+    private void processPickingLiveGameState(String text, long chatId, BotController botController, SendMessage message, Update update){
+        if(update.getMessage().getText().equals("Назад")){
+            botController.setBotState(BotState.CHOOSING_ANALYSER_MODE);
+            setChooseAnalyserModeKeyboard(message, true);
+            StringBuilder responceSb = new StringBuilder();
+            ConcurrentHashMap<String, LiveGame> liveGameMap = liveGamePool.getLiveGames();
+            responceSb.append("Список текущих игр:\n");
+            for(Map.Entry entry : liveGameMap.entrySet()){
+                LiveGame liveGame = (LiveGame)entry.getValue();
+                responceSb.append(liveGame.getTeams()+"\n");
+            }
+            if(liveGameMap.size() > 0)
+                text = responceSb.toString();
+            else
+                text = "Игр в лайве не было обнаружено, пожалуйста, введите пик вручную";
+            setChooseAnalyserModeKeyboard(message, liveGameMap.size() > 0);
+        }
+        else if (update.getMessage().getText().contains("____")){
+            String linkNumber = update.getMessage().getText().split("____")[1];
+            botController.setTeams(update.getMessage().getText().split("____")[0]);
+            ArrayList<String> pickList = liveGamePool.getLiveGames().get("https://hawkbets.com/matches/"+linkNumber).getPicks();
+            if(pickList.size() < 10){
+                text = "Стадия пиков еще не завершена, пожалуйста, повторите попытку позже.";
+                return;
+            }
+            botController.setLeftHeroList(new ArrayList<>(pickList.subList(0,5)));
+            botController.setRightHeroList(new ArrayList<>(pickList.subList(5,10)));
+            StringBuilder sb = new StringBuilder();
+            sb.append("Вы выбрали " + botController.getTeams() + "\n");
+            for (int i = 0; i < botController.getLeftHeroList().size(); i++) {
+                sb.append(botController.getLeftHeroList().get(i));
+                if (i == 4)
+                    sb.append("\n");
+                else
+                    sb.append(", ");
+            }
+            for (int i = 0; i < botController.getRightHeroList().size(); i++) {
+                sb.append(botController.getRightHeroList().get(i));
+                if (i == 4)
+                    sb.append("\n");
+                else
+                    sb.append(", ");
+            }
+            sb.append("\nВсе верно?");
+            text = sb.toString();
+            botController.setBotState(BotState.CONFIRMING_LIVE_GAME);
+            setAgreeReplyKeyboard(message);
+        }
+        else{
+            text = "Пожалуйста, выберите одну из опций:";
+        }
+    }
+
+    private void processPickingFirstLetterState(String text, long chatId, BotController botController, SendMessage message, Update update) {
+        if (update.getMessage().getText().equals("Сменить сторону выбора")) {
+            botController.setPickingRadiantHero(!botController.isPickingRadiantHero());
+            if (botController.isPickingRadiantHero())
+                text = "Выберите первую букву имени героя сил света №" + botController.getRadiantHeroCounter();
+            else
+                text = "Выберите первую букву имени героя сил тьмы №" + (botController.getDireHeroCounter());
+        } else if (update.getMessage().getText().matches("[A-Z]")) {
+            removeReplyKeyboard(message);
+            try {
+                execute(message.setChatId(chatId).setText("Список героев "));
+            } catch (TelegramApiException e) {
+                e.printStackTrace();
+            }
+            text = "на выбранную букву:";
+            botController.setBotState(BotState.PICKING_HERO);
+            setHeroListInlineKeyboard(message, update.getMessage().getText());
+        } else {
+            text = "Пожалуйста, выберите букву:";
+        }
+    }
+
+    private void processPickingHeroState(String text, long chatId, BotController botController, SendMessage message, Update update){
+        if (isChangingHero) {
+            if(heroIndex > 4){
+                heroIndex -= 5;
+                botController.getRightHeroList().remove(heroIndex);
+                botController.getRightHeroList().add(heroIndex, update.getCallbackQuery().getData());
+            }
+            else {
+                botController.getLeftHeroList().remove(heroIndex);
+                botController.getLeftHeroList().add(heroIndex, update.getCallbackQuery().getData());
+            }
+            isChangingHero = false;
+        } else {
+            if(botController.isPickingRadiantHero())
+                botController.getLeftHeroList().add(update.getCallbackQuery().getData());
+            else
+                botController.getRightHeroList().add(update.getCallbackQuery().getData());
+            botController.setBotState(BotState.PICKING_FIRST_LETTER);
+            if (botController.isPickingRadiantHero())
+                botController.setRadiantHeroCounter(botController.getRadiantHeroCounter() + 1);
+            else
+                botController.setDireHeroCounter(botController.getDireHeroCounter() + 1);
+        }
+        if (botController.isPickingRadiantHero() ) {
+            if(botController.getRadiantHeroCounter() <= 5)
+                text = "Выберите первую букву имени героя сил света №" + botController.getRadiantHeroCounter();
+            if (botController.getRadiantHeroCounter() == 6) {
+                text = "Выберите первую букву имени героя сил тьмы №" + botController.getDireHeroCounter();
+                botController.setPickingRadiantHero(false);
+            }
+        } else if (!botController.isPickingRadiantHero()) {
+            if(botController.getDireHeroCounter() <= 5)
+                text = "Выберите первую букву имени героя сил тьмы №" + (botController.getDireHeroCounter());
+            if (botController.getDireHeroCounter()== 6) {
+                text = "Выберите первую букву имени героя сил света №" + botController.getRadiantHeroCounter();
+                botController.setPickingRadiantHero(true);
+            }
+        }
+        boolean isChangingAllowed = false;
+        if (botController.isPickingRadiantHero()) {
+            if (botController.getDireHeroCounter() < 6)
+                isChangingAllowed = true;
+        } else if (!botController.isPickingRadiantHero()) {
+            if (botController.getRadiantHeroCounter() < 6)
+                isChangingAllowed = true;
+        }
+        setAlphabetReplyKeyboard(message, isChangingAllowed);
+        if(botController.getRadiantHeroCounter() > 5 && botController.getDireHeroCounter() > 5) {
+            botController.setBotState(BotState.CONFIRMING);
+            setAgreeReplyKeyboard(message);
+            StringBuilder sb1 = new StringBuilder();
+            for (int i = 0; i < botController.getLeftHeroList().size(); i++) {
+                sb1.append(botController.getLeftHeroList().get(i));
+                if (i == 4)
+                    sb1.append("\n");
+                else
+                    sb1.append(", ");
+            }
+            for (int i = 0; i < botController.getRightHeroList().size(); i++) {
+                sb1.append(botController.getRightHeroList().get(i));
+                if (i == 4)
+                    sb1.append("\n");
+                else
+                    sb1.append(", ");
+            }
+            sb1.append("\nВсе верно?");
+            text = sb1.toString();
+        }
+    }
+
+    private void processConfirmingLiveGameState(String text, long chatId, BotController botController, SendMessage message, Update update) {
+        if (update.getMessage().getText().equals("Да")) {
+            botController.setBotState(BotState.CREATING_EXCEL);
+            text = "Пожалуйста, подождите...";
+            removeReplyKeyboard(message);
+        } else if (update.getMessage().getText().equals("Нет")) {
+            text = "Пожалуйста, выберите одну из предложеных игр:";
+            setChooseLiveGameKeyboard(message);
+            botController.setBotState(BotState.PICKING_LIVE_GAME);
+        } else {
+            text = "Пожалуйста, выберите ответ:";
+        }
+    }
+
+    private void processConfirmingState(String text, long chatId, BotController botController, SendMessage message, Update update) {
+        if (update.getMessage().getText().equals("Да")) {
+            botController.setBotState(BotState.CREATING_EXCEL);
+            text = "Пожалуйста, подождите...";
+            removeReplyKeyboard(message);
+        } else if (update.getMessage().getText().equals("Нет")) {
+            botController.setBotState(BotState.PICKING_HERO_TO_CHANGE);
+            text = "Выберите героя, которого вы желаете заменить";
+            isChangingHero = true;
+            ArrayList<String> heroList = new ArrayList<>(botController.getLeftHeroList());
+            heroList.addAll(botController.getRightHeroList());
+            botController.mergeHeroLists();
+            botController.setRadiantHeroCounter(6);
+            botController.setDireHeroCounter(6);
+            setChangeHeroReplyKeyboard(message, heroList);
+        } else {
+            text = "Пожалуйста, выберите ответ:";
+        }
+    }
+
+    private void processPickingHeroToChangeState(String text, long chatId, BotController botController, SendMessage message, Update update){
+        heroIndex = botController.getHeroList().indexOf(update.getMessage().getText());
+        botController.setBotState(BotState.PICKING_FIRST_LETTER);
+        text = "Выберите первую букву имени героя";
+        setAlphabetReplyKeyboard(message, false);
+    }
+    
     private synchronized void sendExcel(Long chatId) {
         SendDocument sendDocumentRequest = new SendDocument();
         sendDocumentRequest.setChatId(chatId);
